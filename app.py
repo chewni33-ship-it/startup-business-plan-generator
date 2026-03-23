@@ -45,12 +45,28 @@ def main():
         )
 
         st.divider()
+        st.subheader("웹 리서치 (Firecrawl)")
+        use_research = st.checkbox(
+            "웹 리서치 활성화",
+            help="Firecrawl로 시장 데이터, 경쟁사, 트렌드를 자동 수집하여 사업계획서에 반영합니다",
+        )
+        firecrawl_key = ""
+        if use_research:
+            firecrawl_key = st.text_input(
+                "Firecrawl API Key",
+                type="password",
+                help="firecrawl.dev에서 발급받은 API Key",
+                value=os.environ.get("FIRECRAWL_API_KEY", ""),
+            )
+
+        st.divider()
         st.markdown("**사용 방법**")
         st.markdown(
             "1. API Key를 입력하세요\n"
-            "2. 필수 항목을 작성하세요\n"
-            "3. '사업계획서 생성' 클릭\n"
-            "4. 완성된 DOCX를 다운로드하세요"
+            "2. (선택) 웹 리서치를 활성화하세요\n"
+            "3. 필수 항목을 작성하세요\n"
+            "4. '사업계획서 생성' 클릭\n"
+            "5. 완성된 DOCX를 다운로드하세요"
         )
 
     # --- 메인 입력 폼 ---
@@ -188,9 +204,42 @@ def main():
             status_text.text(message)
 
         try:
+            # 0단계: 웹 리서치 (선택)
+            research_context = ""
+            if use_research and firecrawl_key:
+                from web_researcher import run_full_research, format_research_for_prompt
+
+                research_progress = st.progress(0)
+                research_status = st.empty()
+
+                def update_research_progress(progress, message):
+                    research_progress.progress(progress)
+                    research_status.text(message)
+
+                research_data = run_full_research(
+                    firecrawl_api_key=firecrawl_key,
+                    item_name=item_name,
+                    core_technology=core_technology,
+                    target_market=target_market,
+                    business_type=business_type,
+                    keywords=[k.strip() for k in keywords_str.split(",") if k.strip()] if keywords_str else [],
+                    progress_callback=update_research_progress,
+                )
+                research_context = format_research_for_prompt(research_data)
+
+                total_results = sum(len(v) for v in research_data.values())
+                research_status.text(f"웹 리서치 완료! ({total_results}건 수집)")
+
+                with st.expander("수집된 리서치 데이터 미리보기"):
+                    for category, items in research_data.items():
+                        label = {"market": "시장 데이터", "competitors": "경쟁사 분석", "trends": "산업 트렌드"}
+                        st.markdown(f"**{label.get(category, category)}** ({len(items)}건)")
+                        for item in items[:3]:
+                            st.markdown(f"- {item['title']}")
+
             # 1단계: 콘텐츠 생성
             status_text.text("AI가 사업계획서 콘텐츠를 생성하고 있습니다...")
-            all_content = generate_all_sections(user_input, api_key, update_progress)
+            all_content = generate_all_sections(user_input, api_key, update_progress, research_context)
 
             # 2단계: DOCX 생성
             status_text.text("DOCX 문서를 생성하고 있습니다...")

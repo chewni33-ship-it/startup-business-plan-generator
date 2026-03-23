@@ -51,10 +51,18 @@ def _build_prompt(section_id: str, user_input: UserInput) -> str:
     )
 
 
-def generate_section(section_id: str, user_input: UserInput, api_key: str) -> SectionContent:
+def generate_section(section_id: str, user_input: UserInput, api_key: str,
+                     research_context: str = "") -> SectionContent:
     """단일 섹션의 콘텐츠를 Claude API로 생성"""
     client = anthropic.Anthropic(api_key=api_key)
     prompt = _build_prompt(section_id, user_input)
+
+    # 웹 리서치 데이터가 있으면 프롬프트에 추가
+    if research_context and section_id in (
+        "overview_summary", "problem_recognition", "solution_plan",
+        "growth_strategy", "schedule_full"
+    ):
+        prompt += f"\n\n--- 웹 리서치 참고 자료 ---\n{research_context}\n\n위 리서치 자료의 구체적 데이터(시장 규모, 성장률, 트렌드 등)를 적극 활용하여 작성해주세요."
 
     for attempt in range(3):
         try:
@@ -98,7 +106,8 @@ def generate_section(section_id: str, user_input: UserInput, api_key: str) -> Se
                 raise
 
 
-def generate_all_sections(user_input: UserInput, api_key: str, progress_callback=None):
+def generate_all_sections(user_input: UserInput, api_key: str,
+                          progress_callback=None, research_context: str = ""):
     """모든 섹션의 콘텐츠를 순차 생성"""
     section_ids = [
         "overview_summary",
@@ -121,7 +130,7 @@ def generate_all_sections(user_input: UserInput, api_key: str, progress_callback
             progress_callback(i / total, f"생성 중: {section_id} ({i+1}/{total})")
 
         try:
-            content = generate_section(section_id, user_input, api_key)
+            content = generate_section(section_id, user_input, api_key, research_context)
             results[section_id] = content
             logger.info(f"섹션 생성 완료: {section_id}")
         except Exception as e:
